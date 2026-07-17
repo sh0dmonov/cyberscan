@@ -49,7 +49,7 @@ Eng tez va qulay usul. Skanerlash yakunlangach, natijalar `reports/` papkasida H
 
 ```bash
 # Oddiy skanerlash:
-python scan.py scan --url https://disciplix.uz
+python scan.py scan --url https://example.com
 
 # Ruxsatnomani avtomatik tasdiqlash (--yes) va chuqur skanerlash:
 python scan.py scan --url https://example.com --depth deep --yes

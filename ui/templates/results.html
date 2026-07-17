@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Natijalari — {{ session.target_domain }} | WebAuditAgent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <a href="/" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:8px">
+                    <span class="logo-icon">🛡️</span>
+                    <span class="logo-text">WebAuditAgent</span>
+                </a>
+            </div>
+            <nav>
+                <a href="/" class="nav-link">Yangi Scan</a>
+                <a href="/sessions" class="nav-link">Tarix</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container" style="padding-top:2rem">
+
+        <!-- Session Info -->
+        <div class="session-header card">
+            <div class="session-meta">
+                <div class="session-target">
+                    <span class="target-icon">🎯</span>
+                    <div>
+                        <div class="target-url">{{ session.target_url }}</div>
+                        <div class="target-meta">
+                            Session #{{ session.id }} •
+                            {{ session.scan_depth.value }} scan •
+                            {% if session.started_at %}
+                                {{ session.started_at.strftime('%d.%m.%Y %H:%M') }}
+                            {% endif %}
+                            {% if session.duration_seconds %}
+                                • {{ "%.0f"|format(session.duration_seconds) }}s
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="session-status-badge status-{{ session.status }}">
+                    {% if session.status == 'running' %}⏳{% elif session.status == 'completed' %}✅{% elif session.status == 'failed' %}❌{% endif %}
+                    {{ session.status.upper() }}
+                </div>
+            </div>
+
+            <!-- Progress bar (running bo'lsa) -->
+            {% if session.status == 'running' %}
+            <div class="progress-section" id="progressSection">
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar" id="progressBar" style="width:0%"></div>
+                </div>
+                <div class="progress-message" id="progressMsg">Scan davom etmoqda...</div>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if session.status == 'completed' or findings %}
+
+        <!-- Summary Cards -->
+        {% set sc = severity_counts %}
+        <div class="summary-grid">
+            <div class="summary-card critical-card">
+                <div class="summary-count">{{ sc.get('CRITICAL', 0) }}</div>
+                <div class="summary-label">🔴 Critical</div>
+            </div>
+            <div class="summary-card high-card">
+                <div class="summary-count">{{ sc.get('HIGH', 0) }}</div>
+                <div class="summary-label">🟠 High</div>
+            </div>
+            <div class="summary-card medium-card">
+                <div class="summary-count">{{ sc.get('MEDIUM', 0) }}</div>
+                <div class="summary-label">🟡 Medium</div>
+            </div>
+            <div class="summary-card low-card">
+                <div class="summary-count">{{ sc.get('LOW', 0) }}</div>
+                <div class="summary-label">🟢 Low</div>
+            </div>
+            <div class="summary-card info-card">
+                <div class="summary-count">{{ sc.get('INFO', 0) }}</div>
+                <div class="summary-label">ℹ️ Info</div>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+            <span class="filter-label">Filtr:</span>
+            <button class="filter-btn active" data-filter="all">
+                Barchasi <span class="filter-count">{{ total_findings }}</span>
+            </button>
+            <button class="filter-btn" data-filter="CRITICAL">
+                Critical <span class="filter-count">{{ sc.get('CRITICAL', 0) }}</span>
+            </button>
+            <button class="filter-btn" data-filter="HIGH">
+                High <span class="filter-count">{{ sc.get('HIGH', 0) }}</span>
+            </button>
+            <button class="filter-btn" data-filter="MEDIUM">
+                Medium <span class="filter-count">{{ sc.get('MEDIUM', 0) }}</span>
+            </button>
+            <button class="filter-btn" data-filter="LOW">
+                Low <span class="filter-count">{{ sc.get('LOW', 0) }}</span>
+            </button>
+        </div>
+
+        <!-- Findings List -->
+        <div class="findings-list" id="findingsList">
+            {% for finding in findings %}
+            {% set sev = finding.severity.value if finding.severity is not string else finding.severity %}
+            <div class="finding-card finding-{{ sev }}" data-severity="{{ sev }}">
+                <div class="finding-header" onclick="toggleFinding(this)">
+                    <div class="finding-left">
+                        <span class="severity-badge severity-{{ sev }}">
+                            {% if sev == 'CRITICAL' %}🔴
+                            {% elif sev == 'HIGH' %}🟠
+                            {% elif sev == 'MEDIUM' %}🟡
+                            {% elif sev == 'LOW' %}🟢
+                            {% else %}ℹ️{% endif %}
+                            {{ sev }}
+                        </span>
+                        <div class="finding-title-group">
+                            <span class="finding-name">{{ finding.vulnerability_name }}</span>
+                            <span class="finding-url">{{ finding.target_url[:80] }}{% if finding.target_url|length > 80 %}...{% endif %}</span>
+                        </div>
+                    </div>
+                    <div class="finding-right">
+                        {% if finding.cvss_score %}
+                        <span class="cvss-score cvss-{{ sev }}">
+                            CVSS {{ "%.1f"|format(finding.cvss_score) }}
+                        </span>
+                        {% endif %}
+                        {% if finding.cwe_id %}
+                        <span class="cwe-badge">{{ finding.cwe_id }}</span>
+                        {% endif %}
+                        <span class="confidence-badge confidence-{{ finding.confidence }}">
+                            {{ finding.confidence }}
+                        </span>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                </div>
+
+                <div class="finding-body">
+                    <!-- Tool -->
+                    <div class="finding-meta-row">
+                        <span class="meta-label">🔧 Tool:</span>
+                        <code class="meta-value">{{ finding.tool_name }}</code>
+                    </div>
+
+                    <!-- Description -->
+                    <div class="finding-section">
+                        <div class="section-title">📋 Tavsif</div>
+                        <p class="section-content">{{ finding.description }}</p>
+                    </div>
+
+                    <!-- Evidence -->
+                    {% if finding.evidence %}
+                    <div class="finding-section">
+                        <div class="section-title">🔎 Dalil (Evidence)</div>
+                        <pre class="code-block">{{ finding.evidence }}</pre>
+                    </div>
+                    {% endif %}
+
+                    <!-- PoC -->
+                    {% if finding.proof_of_concept %}
+                    <div class="finding-section">
+                        <div class="section-title">🧪 Proof of Concept</div>
+                        <pre class="code-block">{{ finding.proof_of_concept | tojson(indent=2) }}</pre>
+                    </div>
+                    {% endif %}
+
+                    <!-- Remediation -->
+                    {% if finding.remediation %}
+                    <div class="finding-section remediation-section">
+                        <div class="section-title">✅ Remediation (Tuzatish)</div>
+                        <p class="remediation-text">{{ finding.remediation }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            {% if not findings %}
+            <div class="empty-state">
+                {% if session.status == 'running' %}
+                    <div class="empty-icon">⏳</div>
+                    <div>Scan davom etmoqda, iltimos kuting...</div>
+                {% else %}
+                    <div class="empty-icon">🎉</div>
+                    <div>Hech qanday zaiflik topilmadi yoki scan hali yakunlanmagan.</div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        {% elif session.status == 'failed' %}
+        <div class="card error-card">
+            <div class="error-icon">❌</div>
+            <h3>Scan muvaffaqiyatsiz tugadi</h3>
+            <p>{{ session.error_message or 'Noma\'lum xato yuz berdi.' }}</p>
+            <a href="/" class="btn btn-primary">Qayta urinish</a>
+        </div>
+        {% endif %}
+
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>🎓 WebAuditAgent v1.0 — <strong>Faqat ruxsat etilgan maqsadlar uchun</strong></p>
+        </div>
+    </footer>
+
+    <script>
+        // Accordion toggle
+        function toggleFinding(header) {
+            const card = header.closest('.finding-card');
+            card.classList.toggle('expanded');
+        }
+
+        // Filter
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                const filter = this.dataset.filter;
+
+                document.querySelectorAll('.finding-card').forEach(card => {
+                    if (filter === 'all' || card.dataset.severity === filter) {
+                        card.style.display = '';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            });
+        });
+
+        // SSE Progress
+        {% if session.status == 'running' %}
+        const evtSource = new EventSource('/scan/{{ session.id }}/progress');
+        const progressBar = document.getElementById('progressBar');
+        const progressMsg = document.getElementById('progressMsg');
+
+        evtSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (progressBar) progressBar.style.width = data.percent + '%';
+            if (progressMsg) progressMsg.textContent = data.message;
+
+            if (data.status === 'completed' || data.status === 'failed') {
+                evtSource.close();
+                setTimeout(() => location.reload(), 1500);
+            }
+        };
+        {% endif %}
+    </script>
+</body>
+</html>

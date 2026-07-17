@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xavfsizlik Audit Hisoboti — {{ summary.target_url }}</title>
+<style>
+  :root {
+    --critical: #dc3545; --high: #fd7e14; --medium: #ffc107;
+    --low: #28a745;      --info: #17a2b8;
+    --dark: #1a1a2e;     --card: #16213e;  --text: #e0e0e0;
+    --muted: #8892a4;    --border: #2a3a5c;
+    --accent: #4facfe;   --white: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f5f7fa; color: #2d3748;
+    font-size: 13px; line-height: 1.6;
+  }
+
+  /* ── Cover Page ── */
+  .cover {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: white; padding: 60px 80px; min-height: 280px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .cover-logo { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+  .cover-logo span { color: #4facfe; }
+  .cover-title { margin-top: 30px; }
+  .cover-title h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+  .cover-title .target { font-size: 16px; color: #a0aec0; font-family: monospace; }
+  .cover-meta { display: flex; gap: 40px; margin-top: 30px; }
+  .cover-meta-item label { font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 1px; }
+  .cover-meta-item div { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .cover-legal {
+    font-size: 11px; color: #fc8181; margin-top: 20px;
+    border: 1px solid rgba(252,129,129,0.3); padding: 8px 14px;
+    border-radius: 4px; background: rgba(252,129,129,0.06);
+  }
+
+  /* ── Layout ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 30px 40px; }
+
+  /* ── Risk Badge ── */
+  .risk-banner {
+    padding: 20px 30px; border-radius: 10px; margin: 20px 0;
+    display: flex; align-items: center; gap: 20px;
+  }
+  .risk-icon { font-size: 36px; }
+  .risk-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; }
+  .risk-level { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .risk-text { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+
+  /* ── Summary Grid ── */
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 20px 0;
+  }
+  .sev-card {
+    background: white; border-radius: 8px; padding: 16px 14px;
+    text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-top: 3px solid var(--border);
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .sev-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  }
+  .sev-card.c { border-color: var(--critical); }
+  .sev-card.h { border-color: var(--high); }
+  .sev-card.m { border-color: var(--medium); }
+  .sev-card.l { border-color: var(--low); }
+  .sev-card.i { border-color: var(--info); }
+  .sev-count { font-size: 32px; font-weight: 800; }
+  .sev-card.c .sev-count { color: var(--critical); }
+  .sev-card.h .sev-count { color: var(--high); }
+  .sev-card.m .sev-count { color: var(--medium); }
+  .sev-card.l .sev-count { color: var(--low); }
+  .sev-card.i .sev-count { color: var(--info); }
+  .sev-name { font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 4px; }
+
+  /* ── Threat Distribution Visualizer ── */
+  .distribution-container {
+    background: white; border-radius: 8px; padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin: 20px 0 30px;
+  }
+  .dist-title { font-weight: 700; font-size: 12px; margin-bottom: 12px; text-transform: uppercase; color: #4a5568; letter-spacing: 0.5px; }
+  .dist-bar {
+    display: flex; height: 20px; border-radius: 5px; overflow: hidden; background: #e2e8f0; margin-bottom: 15px;
+  }
+  .dist-segment {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 10px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .dist-segment.critical { background: var(--critical); }
+  .dist-segment.high { background: var(--high); }
+  .dist-segment.medium { background: var(--medium); color: #2d3748; text-shadow: none; }
+  .dist-segment.low { background: var(--low); }
+  .dist-segment.info { background: var(--info); }
+
+  .dist-legend { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: #4a5568; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .legend-dot.critical { background: var(--critical); }
+  .legend-dot.high { background: var(--high); }
+  .legend-dot.medium { background: var(--medium); }
+  .legend-dot.low { background: var(--low); }
+  .legend-dot.info { background: var(--info); }
+
+  /* ── Interactive Filters ── */
+  .filter-container {
+    display: flex; gap: 8px; margin: 25px 0 15px; flex-wrap: wrap;
+    background: #edf2f7; padding: 8px 12px; border-radius: 6px;
+    align-items: center;
+  }
+  .filter-label { font-size: 11px; font-weight: 700; color: #4a5568; margin-right: 8px; text-transform: uppercase; }
+  .filter-btn {
+    border: none; background: white; padding: 6px 14px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; cursor: pointer; color: #4a5568;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: all 0.2s;
+  }
+  .filter-btn:hover { background: #e2e8f0; }
+  .filter-btn.active {
+    background: #2d3748; color: white;
+  }
+
+  /* ── Section Headers ── */
+  .section-title {
+    font-size: 16px; font-weight: 700; color: #1a202c;
+    border-left: 4px solid #4facfe; padding-left: 14px;
+    margin: 30px 0 16px;
+  }
+  .section-subtitle { font-size: 12px; color: #718096; margin-top: 2px; }
+
+  /* ── Findings Table ── */
+  .findings-table {
+    width: 100%; border-collapse: collapse;
+    background: white; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;
+  }
+  .findings-table thead tr { background: #2d3748; color: white; }
+  .findings-table th {
+    padding: 11px 14px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600;
+  }
+  .findings-table tbody tr { border-bottom: 1px solid #e2e8f0; transition: background 0.15s; }
+  .findings-table tbody tr:last-child { border: none; }
+  .findings-table tbody tr:hover { background: #f7fafc; }
+  .findings-table td { padding: 10px 14px; font-size: 12px; vertical-align: middle; }
+
+  /* ── Severity Badge ── */
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .badge-CRITICAL { background: rgba(220,53,69,0.12); color: var(--critical); }
+  .badge-HIGH     { background: rgba(253,126,20,0.12); color: var(--high); }
+  .badge-MEDIUM   { background: rgba(255,193,7,0.15);  color: #856404; }
+  .badge-LOW      { background: rgba(40,167,69,0.12);  color: var(--low); }
+  .badge-INFO     { background: rgba(23,162,184,0.12); color: var(--info); }
+
+  /* ── Finding Detail Cards ── */
+  .finding-card {
+    background: white; border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 16px; overflow: hidden;
+    border-left: 4px solid #e2e8f0;
+    page-break-inside: avoid;
+  }
+  .finding-card.CRITICAL { border-color: var(--critical); }
+  .finding-card.HIGH     { border-color: var(--high); }
+  .finding-card.MEDIUM   { border-color: var(--medium); }
+  .finding-card.LOW      { border-color: var(--low); }
+  .finding-card.INFO     { border-color: var(--info); }
+
+  .finding-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px; cursor: pointer;
+    background: #fafafa; border-bottom: 1px solid #e2e8f0;
+  }
+  .finding-header-left { display: flex; align-items: center; gap: 12px; }
+  .finding-num { font-size: 11px; color: #718096; font-family: monospace; }
+  .finding-name { font-size: 13px; font-weight: 600; color: #2d3748; }
+  .finding-tool { font-size: 11px; color: #718096; font-family: monospace; }
+  .finding-header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .cvss-pill {
+    font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    background: #2d3748; color: white; font-family: monospace;
+  }
+  .cwe-tag { font-size: 10px; color: #718096; background: #edf2f7; padding: 2px 7px; border-radius: 3px; }
+
+  .finding-body { padding: 16px 18px; }
+  .finding-section { margin-bottom: 14px; }
+  .finding-section:last-child { margin-bottom: 0; }
+  .fs-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.8px; color: #718096; margin-bottom: 5px;
+  }
+  .fs-content { font-size: 12px; color: #4a5568; line-height: 1.7; }
+  .evidence-block {
+    background: #1a202c; color: #a0aec0; font-family: monospace;
+    font-size: 11px; padding: 12px 14px; border-radius: 5px;
+    overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .remediation-box {
+    background: rgba(40,167,69,0.06); border: 1px solid rgba(40,167,69,0.2);
+    border-radius: 5px; padding: 12px 14px;
+    font-size: 12px; color: #276749; line-height: 1.7;
+    white-space: pre-line;
+  }
+  .refs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .ref-tag {
+    font-size: 10px; color: #4facfe;
+    background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.2);
+    padding: 2px 8px; border-radius: 3px;
+  }
+
+  /* ── Methodology Table ── */
+  .method-table { width: 100%; border-collapse: collapse; background: white;
+    border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .method-table th { background: #4a5568; color: white; padding: 10px 14px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; text-align: left; }
+  .method-table td { padding: 9px 14px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+  .method-table tr:last-child td { border: none; }
+  .method-table tr:nth-child(even) td { background: #f9fafb; }
+
+  /* ── Priority Box ── */
+  .priority-list { display: flex; flex-direction: column; gap: 8px; }
+  .priority-item {
+    display: flex; align-items: center; gap: 12px;
+    background: white; padding: 10px 14px; border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .priority-num {
+    width: 24px; height: 24px; border-radius: 50%; background: #2d3748;
+    color: white; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .priority-info .pname { font-size: 12px; font-weight: 600; }
+  .priority-info .purl { font-size: 11px; color: #718096; font-family: monospace; }
+
+  /* ── Footer ── */
+  .report-footer {
+    background: #2d3748; color: #a0aec0;
+    padding: 16px 40px; font-size: 11px;
+    display: flex; justify-content: space-between;
+    margin-top: 40px;
+  }
+  .legal-footer { color: #fc8181; }
+
+  /* ── Print ── */
+  @media print {
+    .cover { page-break-after: always; }
+    .section-title { page-break-before: auto; }
+    .finding-card { page-break-inside: avoid; }
+    .filter-container { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ COVER ═══════════════════ -->
+<div class="cover">
+  <div>
+    <div class="cover-logo">🛡️ Web<span>Audit</span>Agent</div>
+    <div class="cover-title">
+      <h1>Xavfsizlik Audit Hisoboti</h1>
+      <div class="target">{{ summary.target_url }}</div>
+    </div>
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <label>Skanerlash sanasi</label>
+        <div>{{ summary.scan_date }}</div>
+      </div>
+      <div class="cover-meta-item">
+        <label>Jami topilmalar</label>
+        <div>{{ summary.total }} ta finding</div>
+      </div>
+      <div class="cover-meta-item">
+        <label>Xavf darajasi</label>
+        <div style="color: {{ summary.risk_color }}">{{ summary.risk_level }}</div>
+      </div>
+      {% if scan_duration %}
+      <div class="cover-meta-item">
+        <label>Skanerlash vaqti</label>
+        <div>{{ "%.0f"|format(scan_duration) }} soniya</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="cover-legal">
+    ⚠️ HUQUQIY OGOHLANTIRISH: Ushbu hisobot faqat ruxsat etilgan tizimlarni tekshirish natijasida yaratilgan.
+    Ruxsatsiz skanerlash qonun bilan taqiqlanadi (Computer Misuse Act va mahalliy qonunchilik).
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════ EXECUTIVE SUMMARY ═══════════════════ -->
+<div class="section-title">
+  1. Executive Summary
+  <div class="section-subtitle">Skanerlash natijalari va umumiy xavf bahosi</div>
+</div>
+
+<div class="risk-banner" style="background: {{ summary.risk_color }}18; border: 1px solid {{ summary.risk_color }}40;">
+  <div class="risk-icon">
+    {% if summary.risk_level == 'JUDA YUQORI' %}🔴
+    {% elif summary.risk_level == 'YUQORI' %}🟠
+    {% elif summary.risk_level == "O'RTACHA" %}🟡
+    {% elif summary.risk_level == 'PAST' %}🟢
+    {% else %}🔵{% endif %}
+  </div>
+  <div>
+    <div class="risk-label">Umumiy xavf darajasi</div>
+    <div class="risk-level" style="color: {{ summary.risk_color }}">{{ summary.risk_level }}</div>
+    <div class="risk-text">{{ summary.risk_summary }}</div>
+  </div>
+</div>
+
+<!-- ── Summary Grid ── -->
+<div class="summary-grid">
+  <div class="sev-card c" onclick="filterFindings('CRITICAL')">
+    <div class="sev-count">{{ summary.critical }}</div>
+    <div class="sev-name">🔴 Critical</div>
+  </div>
+  <div class="sev-card h" onclick="filterFindings('HIGH')">
+    <div class="sev-count">{{ summary.high }}</div>
+    <div class="sev-name">🟠 High</div>
+  </div>
+  <div class="sev-card m" onclick="filterFindings('MEDIUM')">
+    <div class="sev-count">{{ summary.medium }}</div>
+    <div class="sev-name">🟡 Medium</div>
+  </div>
+  <div class="sev-card l" onclick="filterFindings('LOW')">
+    <div class="sev-count">{{ summary.low }}</div>
+    <div class="sev-name">🟢 Low</div>
+  </div>
+  <div class="sev-card i" onclick="filterFindings('INFO')">
+    <div class="sev-count">{{ summary.info }}</div>
+    <div class="sev-name">ℹ️ Info</div>
+  </div>
+</div>
+
+<!-- ── Threat Distribution Bar Chart ── -->
+<div class="distribution-container">
+  <div class="dist-title">Zaifliklar taqsimoti diagrammasi</div>
+  <div class="dist-bar">
+    {% if summary.total > 0 %}
+      {% if summary.critical > 0 %}<div class="dist-segment critical" style="width: {{ (summary.critical / summary.total * 100)|round(1) }}%">{{ (summary.critical / summary.total * 100)|round(0) }}%</div>{% endif %}
+      {% if summary.high > 0 %}<div class="dist-segment high" style="width: {{ (summary.high / summary.total * 100)|round(1) }}%">{{ (summary.high / summary.total * 100)|round(0) }}%</div>{% endif %}
+      {% if summary.medium > 0 %}<div class="dist-segment medium" style="width: {{ (summary.medium / summary.total * 100)|round(1) }}%">{{ (summary.medium / summary.total * 100)|round(0) }}%</div>{% endif %}
+      {% if summary.low > 0 %}<div class="dist-segment low" style="width: {{ (summary.low / summary.total * 100)|round(1) }}%">{{ (summary.low / summary.total * 100)|round(0) }}%</div>{% endif %}
+      {% if summary.info > 0 %}<div class="dist-segment info" style="width: {{ (summary.info / summary.total * 100)|round(1) }}%">{{ (summary.info / summary.total * 100)|round(0) }}%</div>{% endif %}
+    {% else %}
+      <div style="width: 100%; text-align: center; line-height: 20px; color: #a0aec0; font-size: 11px;">Ma'lumotlar mavjud emas</div>
+    {% endif %}
+  </div>
+  <div class="dist-legend">
+    <div class="legend-item"><span class="legend-dot critical"></span> Critical ({{ summary.critical }})</div>
+    <div class="legend-item"><span class="legend-dot high"></span> High ({{ summary.high }})</div>
+    <div class="legend-item"><span class="legend-dot medium"></span> Medium ({{ summary.medium }})</div>
+    <div class="legend-item"><span class="legend-dot low"></span> Low ({{ summary.low }})</div>
+    <div class="legend-item"><span class="legend-dot info"></span> Info ({{ summary.info }})</div>
+  </div>
+</div>
+
+{% if summary.priority_items %}
+<div class="section-title" style="margin-top:20px;">
+  Darhol tuzatish kerak bo'lgan topilmalar
+  <div class="section-subtitle">Critical va High darajali zaifliklar</div>
+</div>
+<div class="priority-list">
+  {% for f in summary.priority_items %}
+  <div class="priority-item">
+    <div class="priority-num">{{ loop.index }}</div>
+    <span class="badge badge-{{ f.severity }}">{{ f.severity }}</span>
+    <div class="priority-info">
+      <div class="pname">{{ f.vulnerability_name }}</div>
+      <div class="purl">{{ f.target_url[:80] }}</div>
+    </div>
+    {% if f.cvss_score %}<div class="cvss-pill">CVSS {{ "%.1f"|format(f.cvss_score) }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ═══════════════════ METODOLOGIYA ═══════════════════ -->
+<div class="section-title">
+  2. Metodologiya
+  <div class="section-subtitle">Qaysi modullar va usullar qo'llanildi</div>
+</div>
+
+<table class="method-table">
+  <thead>
+    <tr><th>Modul</th><th>Tekshiruv turi</th><th>Maqsad</th></tr>
+  </thead>
+  <tbody>
+    {% for m in modules_used %}
+    <tr><td>{{ m }}</td><td>Custom/Wrapper</td><td>Avtomatik zaiflik skaneri</td></tr>
+    {% else %}
+    <tr><td>HTTP Headers Scanner</td><td>Custom</td><td>CSP, HSTS, X-Frame-Options va boshqa headerlar</td></tr>
+    <tr><td>XSS Scanner</td><td>Custom</td><td>Reflected XSS — payload injection + tahlil</td></tr>
+    <tr><td>SQL Injection Scanner</td><td>Custom</td><td>Error-based va Boolean-based SQLi</td></tr>
+    <tr><td>CSRF Checker</td><td>Custom</td><td>Forma token va Cookie xavfsizligi</td></tr>
+    <tr><td>CORS Scanner</td><td>Custom</td><td>Cross-Origin Resource Sharing muammolari</td></tr>
+    <tr><td>Info Disclosure Scanner</td><td>Custom</td><td>.env, .git, backup fayllari</td></tr>
+    <tr><td>SSL/TLS Scanner</td><td>Wrapper (sslyze)</td><td>Sertifikat va protokol tekshiruvi</td></tr>
+    <tr><td>Port Scanner</td><td>Wrapper (Nmap)</td><td>Ochiq portlar va servislar</td></tr>
+    <tr><td>Tech Fingerprint</td><td>Custom</td><td>CMS, framework, texnologiyalarni aniqlash</td></tr>
+    <tr><td>DNS/WHOIS Scanner</td><td>Custom</td><td>SPF, DMARC, DNS konfiguratsiyasi</td></tr>
+    <tr><td>CVSS Scorer</td><td>Custom</td><td>CVSS v3.1 balli va severity tasniflash</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ═══════════════════ FINDINGS JADVALI ═══════════════════ -->
+<div class="section-title">
+  3. Topilgan Zaifliklar Jadvali
+  <div class="section-subtitle">Severity bo'yicha saralangan, jami {{ summary.total }} ta finding</div>
+</div>
+
+<!-- ── Interactive Filter Buttons Bar ── -->
+<div class="filter-container">
+  <span class="filter-label">Filtrlash:</span>
+  <button class="filter-btn active" onclick="filterFindings('ALL')">Barchasi</button>
+  <button class="filter-btn" onclick="filterFindings('CRITICAL')">Critical ({{ summary.critical }})</button>
+  <button class="filter-btn" onclick="filterFindings('HIGH')">High ({{ summary.high }})</button>
+  <button class="filter-btn" onclick="filterFindings('MEDIUM')">Medium ({{ summary.medium }})</button>
+  <button class="filter-btn" onclick="filterFindings('LOW')">Low ({{ summary.low }})</button>
+  <button class="filter-btn" onclick="filterFindings('INFO')">Info ({{ summary.info }})</button>
+</div>
+
+<table class="findings-table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Zaiflik nomi</th>
+      <th>Severity</th>
+      <th>CVSS</th>
+      <th>CWE</th>
+      <th>Tool</th>
+      <th>Confidence</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in findings %}
+    <tr class="finding-row-{{ f.severity }}">
+      <td style="color:#718096;font-family:monospace">{{ loop.index }}</td>
+      <td style="font-weight:500">{{ f.vulnerability_name }}</td>
+      <td><span class="badge badge-{{ f.severity }}">{{ f.severity }}</span></td>
+      <td style="font-family:monospace;font-weight:600">
+        {% if f.cvss_score %}{{ "%.1f"|format(f.cvss_score) }}{% else %}—{% endif %}
+      </td>
+      <td><span class="cwe-tag">{{ f.cwe_id or "—" }}</span></td>
+      <td style="font-family:monospace;font-size:11px;color:#718096">{{ f.tool_name }}</td>
+      <td>
+        <span style="font-size:10px;color:
+          {%- if f.confidence == 'HIGH' %}#28a745
+          {%- elif f.confidence == 'MEDIUM' %}#ffc107
+          {%- else %}#dc3545{%- endif %}">
+          ● {{ f.confidence }}
+        </span>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- ═══════════════════ FINDING DETALLARI ═══════════════════ -->
+<div class="section-title">
+  4. Zaifliklar Batafsil Tavsifi
+  <div class="section-subtitle">Har bir topilma uchun tavsif, dalil va tuzatish tavsiyasi</div>
+</div>
+
+{% for f in findings %}
+<div class="finding-card {{ f.severity }}">
+  <div class="finding-header">
+    <div class="finding-header-left">
+      <span class="finding-num">#{{ loop.index }}</span>
+      <span class="badge badge-{{ f.severity }}">{{ f.severity }}</span>
+      <div>
+        <div class="finding-name">{{ f.vulnerability_name }}</div>
+        <div class="finding-tool">{{ f.tool_name }} · {{ f.target_url[:70] }}{% if f.target_url|length > 70 %}…{% endif %}</div>
+      </div>
+    </div>
+    <div class="finding-header-right">
+      {% if f.cvss_score %}<span class="cvss-pill">CVSS {{ "%.1f"|format(f.cvss_score) }}</span>{% endif %}
+      {% if f.cwe_id %}<span class="cwe-tag">{{ f.cwe_id }}</span>{% endif %}
+      {% if f.kb_owasp %}<span class="cwe-tag" style="color:#4facfe">{{ f.kb_owasp[:30] }}</span>{% endif %}
+    </div>
+  </div>
+
+  <div class="finding-body">
+
+    <div class="finding-section">
+      <div class="fs-label">📋 Tavsif</div>
+      <div class="fs-content">{{ f.description }}</div>
+    </div>
+
+    {% if f.kb_impact %}
+    <div class="finding-section">
+      <div class="fs-label">⚡ Ta'sir (Impact)</div>
+      <div class="fs-content">{{ f.kb_impact }}</div>
+    </div>
+    {% endif %}
+
+    {% if f.evidence %}
+    <div class="finding-section">
+      <div class="fs-label">🔎 Dalil (Evidence)</div>
+      <div class="evidence-block">{{ f.evidence }}</div>
+    </div>
+    {% endif %}
+
+    {% if f.proof_of_concept %}
+    <div class="finding-section">
+      <div class="fs-label">🧪 Proof of Concept</div>
+      <div class="evidence-block">{{ f.proof_of_concept | tojson(indent=2) }}</div>
+    </div>
+    {% endif %}
+
+    <div class="finding-section">
+      <div class="fs-label">✅ Tuzatish tavsiyasi (Remediation)</div>
+      <div class="remediation-box">{{ f.kb_remediation or f.remediation }}</div>
+    </div>
+
+    {% if f.kb_references %}
+    <div class="finding-section">
+      <div class="fs-label">📚 Manbalar</div>
+      <div class="refs">
+        {% for ref in f.kb_references %}
+        <span class="ref-tag">{{ ref }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endfor %}
+
+{% if not findings %}
+<div style="text-align:center;padding:60px;color:#718096;background:white;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <div style="font-size:48px;margin-bottom:16px">🎉</div>
+  <div style="font-size:18px;font-weight:600;margin-bottom:8px">Zaiflik topilmadi</div>
+  <div>Skanerlash natijasida jiddiy muammolar aniqlanmadi. Muntazam monitoring tavsiya etiladi.</div>
+</div>
+{% endif %}
+
+</div><!-- /container -->
+
+<div class="report-footer">
+  <div>
+    🛡️ WebAuditAgent v1.0 · Hisobot yaratildi: {{ generated_at }}
+  </div>
+  <div class="legal-footer">
+    ⚠️ FAQAT RUXSAT ETILGAN MAQSADLAR UCHUN · Bitiruv Diplom Loyihasi 2026
+  </div>
+</div>
+
+<script>
+  function filterFindings(severity) {
+    // 1. Update filter buttons UI
+    const buttons = document.querySelectorAll('.filter-btn');
+    buttons.forEach(btn => {
+      const btnText = btn.textContent.split(' ')[0].trim().toUpperCase();
+      if (btnText === severity.toUpperCase() || (severity === 'ALL' && btnText === 'BARCHASI')) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // 2. Filter findings summary table rows
+    const rows = document.querySelectorAll('.findings-table tbody tr');
+    rows.forEach(row => {
+      if (severity === 'ALL') {
+        row.style.display = '';
+      } else {
+        const hasClass = row.className.includes('finding-row-' + severity.toUpperCase());
+        row.style.display = hasClass ? '' : 'none';
+      }
+    });
+
+    // 3. Filter findings detailed cards
+    const cards = document.querySelectorAll('.finding-card');
+    cards.forEach(card => {
+      if (severity === 'ALL') {
+        card.style.display = '';
+      } else {
+        const hasClass = card.className.includes(severity.toUpperCase());
+        card.style.display = hasClass ? '' : 'none';
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

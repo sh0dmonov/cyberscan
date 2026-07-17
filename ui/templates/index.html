@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="WebAuditAgent — Ruxsat etilgan web saytlarni xavfsizlik tekshiruvi uchun professional vosita">
+    <title>WebAuditAgent — Web Security Scanner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <span class="logo-icon">🛡️</span>
+                <span class="logo-text">WebAuditAgent</span>
+                <span class="logo-version">v1.0</span>
+            </div>
+            <nav>
+                <a href="/" class="nav-link active">Scan</a>
+                <a href="/sessions" class="nav-link">Tarix</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-badge">🎓 Diplom Loyihasi — Kiber Xavfsizlik 2026</div>
+            <h1 class="hero-title">Web Application<br><span class="gradient-text">Security Audit</span></h1>
+            <p class="hero-subtitle">
+                OWASP Top 10 asosida zaifliklarni aniqlang, CVSS v3.1 bo'yicha baholang,
+                professional hisobot oling.
+            </p>
+        </div>
+    </section>
+
+    <!-- Legal Warning -->
+    <div class="container">
+        <div class="legal-warning">
+            <span class="warning-icon">⚠️</span>
+            <strong>Huquqiy ogohlantirish:</strong>
+            {{ legal_notice }}
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container main-grid">
+
+        <!-- Scan Form -->
+        <div class="card scan-card">
+            <div class="card-header">
+                <h2>🔍 Yangi Scan Boshlash</h2>
+                <p>Faqat sizga tegishli yoki ruxsat olingan saytlarni tekshiring</p>
+            </div>
+
+            <form method="POST" action="/scan/start" id="scanForm">
+                <!-- Target URL -->
+                <div class="form-group">
+                    <label for="target_url">Target URL</label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🌐</span>
+                        <input
+                            type="text"
+                            id="target_url"
+                            name="target_url"
+                            placeholder="https://example.com yoki http://localhost:8080"
+                            required
+                            autocomplete="off"
+                        >
+                    </div>
+                </div>
+
+                <!-- Scan Depth -->
+                <div class="form-group">
+                    <label>Skanerlash Chuqurligi</label>
+                    <div class="depth-selector">
+                        <label class="depth-option" for="depth_quick">
+                            <input type="radio" id="depth_quick" name="scan_depth" value="quick">
+                            <div class="depth-card">
+                                <span class="depth-icon">⚡</span>
+                                <span class="depth-name">Quick</span>
+                                <span class="depth-time">~2 daqiqa</span>
+                                <span class="depth-desc">Asosiy tekshiruvlar</span>
+                            </div>
+                        </label>
+                        <label class="depth-option" for="depth_standard">
+                            <input type="radio" id="depth_standard" name="scan_depth" value="standard" checked>
+                            <div class="depth-card selected">
+                                <span class="depth-icon">🎯</span>
+                                <span class="depth-name">Standard</span>
+                                <span class="depth-time">~8 daqiqa</span>
+                                <span class="depth-desc">Tavsiya etilgan</span>
+                            </div>
+                        </label>
+                        <label class="depth-option" for="depth_deep">
+                            <input type="radio" id="depth_deep" name="scan_depth" value="deep">
+                            <div class="depth-card">
+                                <span class="depth-icon">🔬</span>
+                                <span class="depth-name">Deep</span>
+                                <span class="depth-time">~20 daqiqa</span>
+                                <span class="depth-desc">To'liq tekshiruv</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Modules Info -->
+                <div class="modules-info">
+                    <div class="modules-title">Tekshirish modullari:</div>
+                    <div class="modules-grid">
+                        <span class="module-tag">🔌 Port Scan (Nmap)</span>
+                        <span class="module-tag">🔒 SSL/TLS</span>
+                        <span class="module-tag">🛡️ HTTP Headers</span>
+                        <span class="module-tag">💉 XSS</span>
+                        <span class="module-tag">🗄️ SQL Injection</span>
+                        <span class="module-tag">🔑 CSRF</span>
+                        <span class="module-tag">🌐 CORS</span>
+                        <span class="module-tag">📄 Info Disclosure</span>
+                        <span class="module-tag">🔍 Tech Fingerprint</span>
+                        <span class="module-tag">🤖 robots.txt</span>
+                        <span class="module-tag">📡 DNS/WHOIS</span>
+                        <span class="module-tag">📊 CVSS Scoring</span>
+                    </div>
+                </div>
+
+                <!-- Consent Checkbox -->
+                <div class="form-group consent-group">
+                    <label class="consent-label" for="user_consent">
+                        <input type="checkbox" id="user_consent" name="user_consent" value="true" required>
+                        <span class="checkmark"></span>
+                        <span class="consent-text">
+                            Men ushbu saytni tekshirishga vakolatliman va
+                            <strong>faqat ruxsat etilgan maqsadlar uchun</strong>
+                            foydalanaman. Ruxsatsiz skanerlash qonun bilan taqiqlanganligini tushunaman.
+                        </span>
+                    </label>
+                </div>
+
+                <!-- Submit -->
+                <button type="submit" class="btn btn-primary btn-lg" id="scanBtn">
+                    <span class="btn-icon">🚀</span>
+                    Skanerlashni Boshlash
+                </button>
+            </form>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+
+            <!-- Stats -->
+            <div class="card stats-card">
+                <h3>📊 CVSS Darajalari</h3>
+                <div class="cvss-legend">
+                    <div class="cvss-item critical">
+                        <span class="cvss-badge">CRITICAL</span>
+                        <span class="cvss-range">9.0 – 10.0</span>
+                    </div>
+                    <div class="cvss-item high">
+                        <span class="cvss-badge">HIGH</span>
+                        <span class="cvss-range">7.0 – 8.9</span>
+                    </div>
+                    <div class="cvss-item medium">
+                        <span class="cvss-badge">MEDIUM</span>
+                        <span class="cvss-range">4.0 – 6.9</span>
+                    </div>
+                    <div class="cvss-item low">
+                        <span class="cvss-badge">LOW</span>
+                        <span class="cvss-range">0.1 – 3.9</span>
+                    </div>
+                    <div class="cvss-item info">
+                        <span class="cvss-badge">INFO</span>
+                        <span class="cvss-range">Ma'lumot</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Scans -->
+            {% if recent_sessions %}
+            <div class="card recent-card">
+                <h3>🕐 Oxirgi Scanlar</h3>
+                <div class="recent-list">
+                    {% for sess in recent_sessions %}
+                    <a href="/scan/{{ sess.id }}" class="recent-item">
+                        <div class="recent-info">
+                            <span class="recent-domain">{{ sess.target_domain }}</span>
+                            <span class="recent-time">{{ sess.created_at.strftime('%d.%m %H:%M') }}</span>
+                        </div>
+                        <div class="recent-status">
+                            <span class="status-badge status-{{ sess.status }}">
+                                {% if sess.status == 'completed' %}✅{% elif sess.status == 'running' %}⏳{% elif sess.status == 'failed' %}❌{% else %}⏸️{% endif %}
+                                {{ sess.status }}
+                            </span>
+                            {% if sess.total_findings > 0 %}
+                            <span class="findings-count">{{ sess.total_findings }} finding</span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>
+                🎓 WebAuditAgent v1.0 — Bitiruv Diplom Loyihasi | Kiber Xavfsizlik 2026 |
+                <strong>Faqat ruxsat etilgan maqsadlar uchun</strong>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Depth selector interactivity
+        document.querySelectorAll('input[name="scan_depth"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('.depth-card').forEach(c => c.classList.remove('selected'));
+                this.closest('.depth-option').querySelector('.depth-card').classList.add('selected');
+            });
+        });
+
+        // Form submit
+        document.getElementById('scanForm').addEventListener('submit', function() {
+            const btn = document.getElementById('scanBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="btn-icon">⏳</span> Scan boshlanyapti...';
+        });
+    </script>
+</body>
+</html>

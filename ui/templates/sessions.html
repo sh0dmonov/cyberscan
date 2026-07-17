@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan Tarixi | WebAuditAgent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <a href="/" style="text-decoration:none;color:inherit;display:flex;align-items:center;gap:8px">
+                    <span class="logo-icon">🛡️</span>
+                    <span class="logo-text">WebAuditAgent</span>
+                </a>
+            </div>
+            <nav>
+                <a href="/" class="nav-link">Yangi Scan</a>
+                <a href="/sessions" class="nav-link active">Tarix</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container" style="padding: 2rem 24px;">
+        <h1 style="margin-bottom:1.5rem;font-size:24px">📋 Scan Tarixi</h1>
+
+        {% if sessions %}
+        <div class="card" style="padding:0;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+                <thead>
+                    <tr style="background:var(--bg-secondary);border-bottom:1px solid var(--border)">
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">#</th>
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Target</th>
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Depth</th>
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Status</th>
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Findings</th>
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Sana</th>
+                        <th style="padding:14px 20px;text-align:left;font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px">Vaqt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sess in sessions %}
+                    <tr style="border-bottom:1px solid var(--border);transition:background 0.15s" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''">
+                        <td style="padding:14px 20px;font-family:var(--font-mono);font-size:13px;color:var(--text-muted)">#{{ sess.id }}</td>
+                        <td style="padding:14px 20px">
+                            <a href="/scan/{{ sess.id }}" style="color:var(--accent);text-decoration:none;font-size:14px;font-weight:500">
+                                {{ sess.target_domain }}
+                            </a>
+                            <div style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:2px">{{ sess.target_url[:60] }}{% if sess.target_url|length > 60 %}...{% endif %}</div>
+                        </td>
+                        <td style="padding:14px 20px">
+                            <span style="font-size:12px;background:var(--bg-secondary);border:1px solid var(--border);padding:3px 10px;border-radius:4px;font-family:var(--font-mono)">
+                                {{ sess.scan_depth.value }}
+                            </span>
+                        </td>
+                        <td style="padding:14px 20px">
+                            <span class="status-badge status-{{ sess.status }}">
+                                {% if sess.status == 'completed' %}✅ Tugadi
+                                {% elif sess.status == 'running' %}⏳ Davom etmoqda
+                                {% elif sess.status == 'failed' %}❌ Xato
+                                {% else %}⏸️ Kutmoqda{% endif %}
+                            </span>
+                        </td>
+                        <td style="padding:14px 20px;font-family:var(--font-mono);font-size:14px;color:{% if sess.total_findings > 0 %}var(--high){% else %}var(--text-muted){% endif %}">
+                            {{ sess.total_findings }}
+                        </td>
+                        <td style="padding:14px 20px;font-size:13px;color:var(--text-secondary);font-family:var(--font-mono)">
+                            {{ sess.created_at.strftime('%d.%m.%Y %H:%M') if sess.created_at else '-' }}
+                        </td>
+                        <td style="padding:14px 20px;font-size:13px;color:var(--text-secondary);font-family:var(--font-mono)">
+                            {% if sess.duration_seconds %}{{ "%.0f"|format(sess.duration_seconds) }}s{% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state card">
+            <div class="empty-icon">📭</div>
+            <div>Hali hech qanday scan o'tkazilmagan.</div>
+            <a href="/" class="btn btn-primary" style="width:auto;margin-top:20px">🚀 Birinchi Scan</a>
+        </div>
+        {% endif %}
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>🎓 WebAuditAgent v1.0 — <strong>Faqat ruxsat etilgan maqsadlar uchun</strong></p>
+        </div>
+    </footer>
+</body>
+</html>

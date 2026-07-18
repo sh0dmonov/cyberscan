@@ -19,7 +19,8 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-from datetime import datetime
+
+
 from pathlib import Path
 from typing import List, Optional
 
@@ -180,10 +181,14 @@ def scan(
     )
 
     output.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     from urllib.parse import urlparse
-    domain = urlparse(url).netloc.replace(".", "_").replace(":", "_")
-    base_name = f"audit_{domain}_{timestamp}"
+    netloc = urlparse(url).netloc  # masalan: disciplix.com yoki www.disciplix.com
+    # www. prefiksini olib tashlash
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    # Faqat asosiy nom: disciplix.com → disciplix
+    parts = netloc.split(".")
+    base_name = parts[0] if parts else netloc
 
     saved = []
 

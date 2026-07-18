@@ -3,41 +3,49 @@ WebAuditAgent — Global Configuration
 =====================================
 Barcha sozlamalar shu yerda boshqariladi.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional, ClassVar, Dict, List, Any
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
     # Database
     database_url: str = Field(
         default="sqlite+aiosqlite:///./audit.db",
-        env="DATABASE_URL"
+        validation_alias="DATABASE_URL",
     )
 
     # Anthropic
-    anthropic_api_key: Optional[str] = Field(default=None, env="ANTHROPIC_API_KEY")
+    anthropic_api_key: Optional[str] = Field(default=None, validation_alias="ANTHROPIC_API_KEY")
 
     # Scanner rate limiting
-    request_delay: float = Field(default=0.5, env="REQUEST_DELAY")
-    max_concurrent_requests: int = Field(default=5, env="MAX_CONCURRENT_REQUESTS")
-    request_timeout: int = Field(default=10, env="REQUEST_TIMEOUT")
+    request_delay: float = Field(default=0.5, validation_alias="REQUEST_DELAY")
+    max_concurrent_requests: int = Field(default=5, validation_alias="MAX_CONCURRENT_REQUESTS")
+    request_timeout: int = Field(default=10, validation_alias="REQUEST_TIMEOUT")
 
-    # Tool paths
-    nmap_path: str = Field(default="nmap", env="NMAP_PATH")
-    gobuster_path: str = Field(default="gobuster", env="GOBUSTER_PATH")
-    ffuf_path: str = Field(default="ffuf", env="FFUF_PATH")
-    whatweb_path: str = Field(default="whatweb", env="WHATWEB_PATH")
-    amass_path: str = Field(default="amass", env="AMASS_PATH")
-    sslyze_path: str = Field(default="sslyze", env="SSLYZE_PATH")
-    wpscan_path: str = Field(default="wpscan", env="WPSCAN_PATH")
-    nikto_path: str = Field(default="nikto", env="NIKTO_PATH")
+    # SSL tekshiruvi (skanerlar uchun odatda False — expired cert bo'lgan saytlarni ham skanerlash uchun)
+    verify_ssl: bool = Field(default=False, validation_alias="VERIFY_SSL")
+
+    # Tool paths (faqat haqiqatda ishlatiladiganlar)
+    nmap_path: str = Field(default="nmap", validation_alias="NMAP_PATH")
+    sslyze_path: str = Field(default="sslyze", validation_alias="SSLYZE_PATH")
 
     # App
-    app_host: str = Field(default="0.0.0.0", env="APP_HOST")
-    app_port: int = Field(default=8000, env="APP_PORT")
-    app_debug: bool = Field(default=False, env="APP_DEBUG")
-    secret_key: str = Field(default="change-this-secret", env="SECRET_KEY")
+    app_host: str = Field(default="0.0.0.0", validation_alias="APP_HOST")
+    app_port: int = Field(default=8000, validation_alias="APP_PORT")
+    app_debug: bool = Field(default=False, validation_alias="APP_DEBUG")
+    secret_key: str = Field(default="change-this-secret", validation_alias="SECRET_KEY")
+
+    # Web UI autentifikatsiya sozlamalari
+    auth_username: str = Field(default="admin", validation_alias="AUTH_USERNAME")
+    auth_password: str = Field(default="changeme", validation_alias="AUTH_PASSWORD")
+    auth_enabled: bool = Field(default=True, validation_alias="AUTH_ENABLED")
 
     # Scan depth multipliers
     SCAN_DEPTH_CONFIG: ClassVar[Dict[str, Any]] = {
@@ -156,11 +164,6 @@ class Settings(BaseSettings):
         "Authorized Testing Only; "
         "github.com/your-username/web-audit-agent)"
     )
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
 
 
 settings = Settings()

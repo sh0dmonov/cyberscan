@@ -50,7 +50,7 @@ class SqliErrorScanner(BaseScanner):
                         remediation="SQL so'rovlarini to'liq parametrli (Prepared Statements) ko'rinishga keltiring. ORM ishlating.",
                         confidence="HIGH",
                     ))
-                    break # bitta param yetarli
+                    break  # bitta param yetarli
 
         # 2. HTML formalari error-based SQLi
         soup = BeautifulSoup(response.text, "lxml")
@@ -133,49 +133,137 @@ class SqliBooleanScanner(BaseScanner):
     async def scan(self, target: ScanTarget) -> List[RawFinding]:
         findings = []
         if target.depth == "quick":
-            return findings # boolean-based blind test quick rejimda o'tkazib yuboriladi
+            return findings  # boolean-based blind test quick rejimda o'tkazib yuboriladi
 
         logger.info(f"Sqli Boolean scan boshlandi: {target.url}")
+
+        # 1. URL query parametrlari
         parsed = urlparse(target.url)
-        if not parsed.query:
+        if parsed.query:
+            params = parse_qs(parsed.query)
+            for param_name in params:
+                finding = await self._test_boolean_url(target.url, param_name)
+                if finding:
+                    findings.append(finding)
+                    return findings  # bitta topilsa yetarli
+
+        # 2. HTML formalar — avval yo'q edi (kamchilik tuzatildi)
+        response = await self.get(target.url)
+        if not response:
             return findings
 
-        params = parse_qs(parsed.query)
-        for param_name in params:
-            true_url = self._inject_param(target.url, param_name, "1 AND 1=1")
-            false_url = self._inject_param(target.url, param_name, "1 AND 1=2")
+        soup = BeautifulSoup(response.text, "lxml")
+        forms = soup.find_all("form")
 
-            true_resp = await self.get(true_url)
-            false_resp = await self.get(false_url)
+        for form in forms:
+            action = form.get("action", target.url)
+            method = form.get("method", "get").upper()
+            form_url = urljoin(target.url, action)
 
-            if not true_resp or not false_resp:
-                continue
+            inputs = form.find_all(["input", "textarea"])
+            text_inputs = [
+                inp for inp in inputs
+                if inp.get("type", "text").lower()
+                   not in ("submit", "button", "checkbox", "radio", "file", "image", "hidden")
+            ]
 
-            true_len = len(true_resp.text)
-            false_len = len(false_resp.text)
+            for inp in text_inputs:
+                param_name = inp.get("name")
+                if not param_name:
+                    continue
 
-            if true_len > 0 and false_len > 0:
-                diff_ratio = abs(true_len - false_len) / max(true_len, false_len)
-                if diff_ratio > 0.15:  # 15% dan yuqori farq bo'lsa
-                    findings.append(self._make_finding(
-                        target_url=target.url,
-                        vulnerability_name="SQL Injection (Boolean-Based -- Ehtimoliy)",
-                        severity="HIGH",
-                        description=f"Parametr '{param_name}' uchun TRUE va FALSE SQL so'rovlar har xil uzunlikdagi sahifalarni qaytardi ({diff_ratio:.0%} farq).",
-                        evidence=f"TRUE: {true_url} ({true_len} bayt)\nFALSE: {false_url} ({false_len} bayt)",
-                        proof_of_concept={
-                            "parameter": param_name,
-                            "true_payload": "1 AND 1=1",
-                            "false_payload": "1 AND 1=2",
-                            "difference_ratio": round(diff_ratio, 3)
-                        },
-                        cwe_id="CWE-89",
-                        cvss_score=8.5,
-                        remediation="Barcha query parametrlarini SQL so'rovlariga Prepared Statements orqali uzating.",
-                        confidence="MEDIUM",
-                    ))
-                    break
+                base_data = {}
+                for i in inputs:
+                    n = i.get("name")
+                    if n:
+                        base_data[n] = i.get("value", "test")
+
+                finding = await self._test_boolean_form(
+                    form_url, param_name, method, base_data, target.url
+                )
+                if finding:
+                    findings.append(finding)
+                    return findings
+
         return findings
+
+    async def _test_boolean_url(self, url: str, param_name: str) -> Optional[RawFinding]:
+        """URL parametri uchun boolean SQLi testi."""
+        true_url = self._inject_param(url, param_name, "1 AND 1=1")
+        false_url = self._inject_param(url, param_name, "1 AND 1=2")
+
+        true_resp = await self.get(true_url)
+        false_resp = await self.get(false_url)
+
+        if not true_resp or not false_resp:
+            return None
+
+        return self._evaluate_diff(
+            param_name, true_resp.text, false_resp.text, url
+        )
+
+    async def _test_boolean_form(
+        self, form_url: str, param_name: str, method: str,
+        base_data: dict, target_url: str
+    ) -> Optional[RawFinding]:
+        """HTML forma parametri uchun boolean SQLi testi."""
+        true_data = {**base_data, param_name: "1 AND 1=1"}
+        false_data = {**base_data, param_name: "1 AND 1=2"}
+
+        if method == "POST":
+            true_resp = await self.post(form_url, data=true_data)
+            false_resp = await self.post(form_url, data=false_data)
+        else:
+            true_resp = await self.get(form_url, params=true_data)
+            false_resp = await self.get(form_url, params=false_data)
+
+        if not true_resp or not false_resp:
+            return None
+
+        return self._evaluate_diff(
+            param_name, true_resp.text, false_resp.text, target_url,
+            via_form=True, method=method
+        )
+
+    def _evaluate_diff(
+        self, param_name: str, true_text: str, false_text: str, target_url: str,
+        via_form: bool = False, method: str = "GET"
+    ) -> Optional[RawFinding]:
+        """Response hajmidagi farqni baholaydi."""
+        true_len = len(true_text)
+        false_len = len(false_text)
+
+        if true_len > 0 and false_len > 0:
+            diff_ratio = abs(true_len - false_len) / max(true_len, false_len)
+            if diff_ratio > 0.15:  # 15% dan yuqori farq bo'lsa
+                source = f"Form ({method})" if via_form else "URL param"
+                return self._make_finding(
+                    target_url=target_url,
+                    vulnerability_name="SQL Injection (Boolean-Based -- Ehtimoliy)",
+                    severity="HIGH",
+                    description=(
+                        f"Parametr '{param_name}' uchun TRUE va FALSE SQL so'rovlar "
+                        f"har xil uzunlikdagi sahifalarni qaytardi ({diff_ratio:.0%} farq). "
+                        f"Manba: {source}."
+                    ),
+                    evidence=(
+                        f"TRUE payload ({true_len} bayt)\n"
+                        f"FALSE payload ({false_len} bayt)\n"
+                        f"Farq: {diff_ratio:.0%}"
+                    ),
+                    proof_of_concept={
+                        "parameter": param_name,
+                        "true_payload": "1 AND 1=1",
+                        "false_payload": "1 AND 1=2",
+                        "difference_ratio": round(diff_ratio, 3),
+                        "via_form": via_form,
+                    },
+                    cwe_id="CWE-89",
+                    cvss_score=8.5,
+                    remediation="Barcha query parametrlarini SQL so'rovlariga Prepared Statements orqali uzating.",
+                    confidence="MEDIUM",
+                )
+        return None
 
     def _inject_param(self, url: str, param_name: str, value: str) -> str:
         parsed = urlparse(url)

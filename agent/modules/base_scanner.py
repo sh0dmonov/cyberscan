@@ -17,6 +17,9 @@ from agent.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Haqiqiy parallel so'rovlar cheklovi uchun global Semaphore
+_REQUEST_SEMAPHORE = asyncio.Semaphore(settings.max_concurrent_requests)
+
 
 @dataclass
 class ScanTarget:
@@ -85,13 +88,23 @@ class BaseScanner(ABC):
         self._http_client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
-        """Shared async HTTP client."""
+        """Shared async HTTP client.
+        
+        Eslatma: verify=False ishlatilmoqda — bu barcha SSL sertifikatlarni
+        tekshirisiz qabul qiladi. Bu skanerlash vositasi uchun maqbul, lekin
+        ishlab chiqarish kodida ishlatmang.
+        """
         if self._http_client is None or self._http_client.is_closed:
+            if not settings.verify_ssl:
+                logger.debug(
+                    f"[{self.name}] SSL tekshiruvi o'chirilgan (verify=False). "
+                    "Bu skanerlash rejimi uchun maqbul."
+                )
             self._http_client = httpx.AsyncClient(
                 timeout=settings.request_timeout,
                 headers={"User-Agent": settings.USER_AGENT},
                 follow_redirects=True,
-                verify=False,
+                verify=settings.verify_ssl,
             )
         return self._http_client
 
@@ -103,22 +116,25 @@ class BaseScanner(ABC):
     ) -> Optional[httpx.Response]:
         """
         Xavfsiz HTTP so'rov yuboruvchi helper.
-        Rate limiting va xatolarni avtomatik boshqaradi.
+        Rate limiting (asyncio.Semaphore) va xatolarni avtomatik boshqaradi.
         """
         await asyncio.sleep(settings.request_delay)
         client = await self._get_client()
-        try:
-            response = await client.request(method, url, **kwargs)
-            return response
-        except httpx.TimeoutException:
-            self.logger.warning(f"Timeout: {url}")
-            return None
-        except httpx.ConnectError:
-            self.logger.warning(f"Connection error: {url}")
-            return None
-        except Exception as e:
-            self.logger.error(f"Request error {url}: {e}")
-            return None
+
+        # Haqiqiy parallel so'rovlar cheklovi
+        async with _REQUEST_SEMAPHORE:
+            try:
+                response = await client.request(method, url, **kwargs)
+                return response
+            except httpx.TimeoutException:
+                self.logger.warning(f"Timeout: {url}")
+                return None
+            except httpx.ConnectError:
+                self.logger.warning(f"Connection error: {url}")
+                return None
+            except Exception as e:
+                self.logger.error(f"Request error {url}: {e}")
+                return None
 
     async def get(self, url: str, **kwargs) -> Optional[httpx.Response]:
         return await self._request("GET", url, **kwargs)
@@ -158,6 +174,7 @@ class BaseScanner(ABC):
         cwe_id: Optional[str] = None,
         cve_id: Optional[str] = None,
         cvss_score: Optional[float] = None,
+        cvss_vector: Optional[str] = None,
         remediation: str = "",
         confidence: str = "MEDIUM",
     ) -> RawFinding:
@@ -173,6 +190,7 @@ class BaseScanner(ABC):
             cwe_id=cwe_id,
             cve_id=cve_id,
             cvss_score=cvss_score,
+            cvss_vector=cvss_vector,
             remediation=remediation,
             confidence=confidence,
         )

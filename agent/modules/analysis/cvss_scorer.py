@@ -20,55 +20,109 @@ CVSS_SEVERITY_MAP = {
     (0.0, 0.0):  "INFO",
 }
 
-# Zaiflik turi → CVSS v3.1 bazaviy ball (standart)
-DEFAULT_CVSS_SCORES = {
-    "SQL Injection":              9.8,
-    "Reflected Cross-Site Scripting": 7.2,
-    "CORS Arbitrary Origin":      8.1,
-    "Missing CSRF Token":         5.4,
-    "HSTS":                       5.9,
-    "Missing CSP":                6.1,
-    "Information Disclosure":     5.3,
-    "SSL Certificate Expired":    9.0,
-    "Open Port":                  5.0,
-    "Directory Traversal":        7.5,
-    "Server Version Disclosure":  3.1,
+# Zaiflik turi → (CVSS v3.1 bazaviy ball, CVSS v3.1 vector string)
+DEFAULT_CVSS_DATA = {
+    "SQL Injection": (
+        9.8,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    ),
+    "Reflected Cross-Site Scripting": (
+        7.2,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+    ),
+    "Stored Cross-Site Scripting": (
+        8.8,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:H/I:H/A:N"
+    ),
+    "CORS Arbitrary Origin": (
+        8.1,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N"
+    ),
+    "CORS Wildcard": (
+        5.3,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+    ),
+    "Missing CSRF Token": (
+        5.4,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:L/A:N"
+    ),
+    "HSTS": (
+        5.9,
+        "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    ),
+    "Missing CSP": (
+        6.1,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+    ),
+    "Information Disclosure": (
+        5.3,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+    ),
+    "SSL Certificate Expired": (
+        9.0,
+        "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    ),
+    "Open Port": (
+        5.0,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"
+    ),
+    "Directory Traversal": (
+        7.5,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    ),
+    "Server Version Disclosure": (
+        3.1,
+        "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N"
+    ),
+    "Open Redirect": (
+        6.1,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N"
+    ),
+    "Dangerous HTTP Method": (
+        7.5,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
+    ),
+    "Insecure Cookie": (
+        4.3,
+        "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:N/A:N"
+    ),
 }
 
 
 class CvssScorer:
     """
-    RawFinding ro'yxatiga CVSS ball beradi va severity ni belgilaydi.
+    RawFinding ro'yxatiga CVSS v3.1 ball va vector beradi.
     """
 
     def score_findings(self, findings: List[RawFinding]) -> List[RawFinding]:
         """Barcha finding'larga CVSS ball beradi."""
-        scored = []
-        for finding in findings:
-            finding = self._apply_cvss(finding)
-            scored.append(finding)
-        return scored
+        return [self._apply_cvss(f) for f in findings]
 
     def _apply_cvss(self, finding: RawFinding) -> RawFinding:
-        """Bitta finding'ga CVSS ball beradi."""
+        """Bitta finding'ga CVSS ball va vector beradi."""
         # Agar scanner o'zi ball bergan bo'lsa, uni ishlatamiz
         if finding.cvss_score is not None:
             finding.severity = self._cvss_to_severity(finding.cvss_score)
+            # Vector yo'q bo'lsa — zaiflik nomiga qarab olishga harakat qilamiz
+            if not finding.cvss_vector:
+                _, vector = self._lookup_default_data(finding.vulnerability_name)
+                finding.cvss_vector = vector
             return finding
 
-        # Zaiflik nomiga qarab default ball berish
-        score = self._lookup_default_score(finding.vulnerability_name)
+        # Zaiflik nomiga qarab default ball va vector berish
+        score, vector = self._lookup_default_data(finding.vulnerability_name)
         finding.cvss_score = score
+        finding.cvss_vector = vector
         finding.severity = self._cvss_to_severity(score)
         return finding
 
-    def _lookup_default_score(self, vuln_name: str) -> float:
-        """Zaiflik nomi asosida standart CVSS ballini topadi."""
+    def _lookup_default_data(self, vuln_name: str) -> tuple[float, str]:
+        """Zaiflik nomi asosida standart CVSS ball va vektorini topadi."""
         vuln_lower = vuln_name.lower()
-        for keyword, score in DEFAULT_CVSS_SCORES.items():
+        for keyword, (score, vector) in DEFAULT_CVSS_DATA.items():
             if keyword.lower() in vuln_lower:
-                return score
-        return 5.0  # Default: Medium
+                return score, vector
+        return 5.0, "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"  # Default: Medium
 
     def _cvss_to_severity(self, score: float) -> str:
         """CVSS ball asosida severity darajasini qaytaradi."""
@@ -96,19 +150,12 @@ class Verifier:
         Har bir finding'ning ishonchliligini baholaydi.
         False positive ehtimoli yuqori bo'lsa, confidence'ni pasaytiradi.
         """
-        verified = []
-        for finding in findings:
-            finding = self._verify(finding)
-            verified.append(finding)
-        return verified
+        return [self._verify(f) for f in findings]
 
     def _verify(self, finding: RawFinding) -> RawFinding:
         """Bitta finding'ni tekshiradi."""
-        issues = []
-
         # Boolean-based SQLi: confidence pastroq
         if "boolean-based" in finding.vulnerability_name.lower():
-            issues.append("Boolean-based SQLi — qo'shimcha tasdiq kerak")
             finding.confidence = "MEDIUM"
 
         # Ehtimoliy deb belgilangan topilmalar
@@ -116,13 +163,14 @@ class Verifier:
            "possible" in finding.vulnerability_name.lower():
             finding.confidence = "LOW"
 
-        # PoC ma'lumotlari bor bo'lsa — yuqori ishonch
+        # Evidence yo'q bo'lsa — past ishonch
+        if not finding.evidence:
+            finding.confidence = "LOW"
+            return finding
+
+        # PoC ma'lumotlari bor va evidence ham bo'lsa — yuqori ishonch
         if finding.proof_of_concept and len(finding.proof_of_concept) > 2:
             if finding.confidence != "LOW":
                 finding.confidence = "HIGH"
-
-        # Evidence mavjudligi
-        if not finding.evidence:
-            finding.confidence = "LOW"
 
         return finding

@@ -7,7 +7,7 @@ va payload injection orqali Reflected XSS ni tekshiradi.
 import logging
 import re
 from typing import List, Optional
-from urllib.parse import urljoin, urlencode, urlparse, parse_qs, urlencode
+from urllib.parse import urljoin, urlencode, urlparse, parse_qs
 
 import httpx
 from bs4 import BeautifulSoup
@@ -141,15 +141,24 @@ class XssScanner(BaseScanner):
 
         response_text = response.text
 
-        # Payload reflected bo'ldimi? (encode qilinmagan holda)
-        if payload in response_text:
-            # Encoding tekshiruvi
+        # Payload encode qilinmagan holda response'da mavjudmi?
+        payload_in_response = payload in response_text
+
+        if payload_in_response:
+            # Payload faqat encode qilingan holda mavjudmi tekshirish
+            # Agar encode qilinmagan holda HAM bo'lsa — zaiflik aniq
             encoded_versions = [
                 payload.replace("<", "&lt;").replace(">", "&gt;"),
                 payload.replace("<", "%3C").replace(">", "%3E"),
             ]
-            if any(enc in response_text for enc in encoded_versions):
-                return None  # Encoded — xavfli emas
+            # Agar payload faqat encoded holda bo'lsa — xavfsiz
+            # Lekin encode qilinmagan holda mavjud bo'lsa — ZAIFLIK
+            # (oldingi noto'g'ri mantiq: encoded version bo'lsa ham None qaytarardi)
+            only_encoded = all(enc in response_text for enc in encoded_versions) and \
+                           not any(enc == payload for enc in encoded_versions)
+            if only_encoded:
+                # Faqat encoded — xavfsiz
+                return None
 
             return self._make_finding(
                 target_url=url,

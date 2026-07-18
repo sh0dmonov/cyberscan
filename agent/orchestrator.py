@@ -22,107 +22,10 @@ from agent.modules.analysis.cvss_scorer import CvssScorer, Verifier
 from agent.utils.scope_enforcer import ScopeEnforcer
 from agent.utils.audit_logger import AuditLogger
 
-# --- Scanner modullari ---
-from agent.modules.scanners.http_headers import (
-    CspHeaderScanner, HstsHeaderScanner, XFrameHeaderScanner,
-    XContentTypeHeaderScanner, ReferrerPolicyHeaderScanner,
-    PermissionsPolicyHeaderScanner, ServerHeaderScanner, XPoweredByScanner
-)
-from agent.modules.scanners.xss_scanner import XssScanner
-from agent.modules.scanners.sqli_scanner import SqliErrorScanner, SqliBooleanScanner
-from agent.modules.scanners.csrf_checker import CsrfFormScanner, CookieSecurityScanner
-from agent.modules.scanners.cors_scanner import CorsScanner
-from agent.modules.scanners.info_disclosure import (
-    EnvFileScanner, GitRepoScanner, BackupFileScanner,
-    PhpInfoScanner, PhpMyAdminScanner, SwaggerApiScanner, SpringBootActuatorScanner
-)
-from agent.modules.scanners.port_scan import NmapScanner
-from agent.modules.scanners.ssl_tls import SslCertificateScanner, SslProtocolScanner
-from agent.modules.recon.tech_fingerprint import (
-    TechFingerprintScanner, RobotsScanner, SitemapScanner,
-    DnsSpfScanner, DnsDmarcScanner, DnsMxScanner, DnsZoneTransferScanner
-)
+# Markazlashtirilgan scanner registry — DRY
+from agent.scanner_registry import SCANNERS_BY_DEPTH
 
 logger = logging.getLogger(__name__)
-
-# Scan chuqurligiga qarab modullar
-SCANNERS_BY_DEPTH = {
-    "quick": [
-        CspHeaderScanner,
-        HstsHeaderScanner,
-        XFrameHeaderScanner,
-        XContentTypeHeaderScanner,
-        EnvFileScanner,
-        GitRepoScanner,
-        SslCertificateScanner,
-    ],
-    "standard": [
-        TechFingerprintScanner,
-        RobotsScanner,
-        SitemapScanner,
-        DnsSpfScanner,
-        DnsDmarcScanner,
-        DnsMxScanner,
-        DnsZoneTransferScanner,
-        CspHeaderScanner,
-        HstsHeaderScanner,
-        XFrameHeaderScanner,
-        XContentTypeHeaderScanner,
-        ReferrerPolicyHeaderScanner,
-        PermissionsPolicyHeaderScanner,
-        ServerHeaderScanner,
-        XPoweredByScanner,
-        SslCertificateScanner,
-        SslProtocolScanner,
-        EnvFileScanner,
-        GitRepoScanner,
-        BackupFileScanner,
-        PhpInfoScanner,
-        PhpMyAdminScanner,
-        SwaggerApiScanner,
-        SpringBootActuatorScanner,
-        CorsScanner,
-        XssScanner,
-        SqliErrorScanner,
-        SqliBooleanScanner,
-        CsrfFormScanner,
-        CookieSecurityScanner,
-        NmapScanner,
-    ],
-    "deep": [
-        TechFingerprintScanner,
-        RobotsScanner,
-        SitemapScanner,
-        DnsSpfScanner,
-        DnsDmarcScanner,
-        DnsMxScanner,
-        DnsZoneTransferScanner,
-        CspHeaderScanner,
-        HstsHeaderScanner,
-        XFrameHeaderScanner,
-        XContentTypeHeaderScanner,
-        ReferrerPolicyHeaderScanner,
-        PermissionsPolicyHeaderScanner,
-        ServerHeaderScanner,
-        XPoweredByScanner,
-        SslCertificateScanner,
-        SslProtocolScanner,
-        EnvFileScanner,
-        GitRepoScanner,
-        BackupFileScanner,
-        PhpInfoScanner,
-        PhpMyAdminScanner,
-        SwaggerApiScanner,
-        SpringBootActuatorScanner,
-        CorsScanner,
-        XssScanner,
-        SqliErrorScanner,
-        SqliBooleanScanner,
-        CsrfFormScanner,
-        CookieSecurityScanner,
-        NmapScanner,
-    ],
-}
 
 
 class Orchestrator:
@@ -169,14 +72,13 @@ class Orchestrator:
         scope = ScopeEnforcer(target_url)
 
         # ScanTarget yaratish
-        parsed = urlparse(target_url)
         target = ScanTarget.from_url(target_url, depth=scan_depth, session_id=session_id)
 
         all_findings: List[RawFinding] = []
         total_checks = 0
 
         try:
-            # Scan uchun modullar ro'yxatini tanlash
+            # Scan uchun modullar ro'yxatini tanlash (markazlashtirilgan registry'dan)
             scanner_classes = SCANNERS_BY_DEPTH.get(scan_depth, SCANNERS_BY_DEPTH["standard"])
 
             for i, scanner_class in enumerate(scanner_classes):
@@ -234,10 +136,12 @@ class Orchestrator:
             await self._save_findings(session_id, all_findings)
 
             # Session'ni yakunlash
+            # total_findings: BARCHA finding'lar soni (LOW confidence ham hisobga olinadi)
+            # Bu statistika va hisobot uchun to'g'ri ko'rsatkich
             session.status = ScanStatus.COMPLETED
             session.completed_at = datetime.utcnow()
             session.total_checks = total_checks
-            session.total_findings = len([f for f in all_findings if not f.confidence == "LOW"])
+            session.total_findings = len(all_findings)
             await self.db.commit()
 
             audit_log.log_session_end(len(all_findings))

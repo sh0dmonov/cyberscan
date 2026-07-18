@@ -6,13 +6,16 @@ Starlette Jinja2Templates bypass qilingan — to'g'ridan-to'g'ri jinja2 ishlatil
 import asyncio
 import json
 import logging
+import secrets
+import time
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import jinja2
 from markupsafe import Markup
-from fastapi import FastAPI, Request, Form, Depends, HTTPException
+from fastapi import FastAPI, Request, Form, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -45,8 +48,41 @@ _env.filters["tojson"] = lambda v, **kw: Markup(
 
 def render(template_name: str, **context) -> HTMLResponse:
     """Template'ni render qilib HTMLResponse qaytaradi."""
-    tmpl = _env.get_template(template_name)
-    return HTMLResponse(content=tmpl.render(**context))
+    try:
+        tmpl = _env.get_template(template_name)
+        return HTMLResponse(content=tmpl.render(**context))
+    except jinja2.TemplateNotFound:
+        logger.error(f"Shablon topilmadi: {template_name}")
+        raise HTTPException(status_code=500, detail=f"Shablon topilmadi: {template_name}")
+
+
+# ── HTTP Basic Auth ─────────────────────────────────────────────────────────
+security = HTTPBasic()
+
+
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)) -> str:
+    """
+    HTTP Basic Auth orqali foydalanuvchini tekshiradi.
+    AUTH_ENABLED=false bo'lsa, autentifikatsiya o'tkazib yuboriladi.
+    """
+    if not settings.auth_enabled:
+        return "anonymous"
+
+    correct_username = secrets.compare_digest(
+        credentials.username.encode("utf8"),
+        settings.auth_username.encode("utf8"),
+    )
+    correct_password = secrets.compare_digest(
+        credentials.password.encode("utf8"),
+        settings.auth_password.encode("utf8"),
+    )
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Noto'g'ri foydalanuvchi nomi yoki parol",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 
 # ── FastAPI ilovasi ────────────────────────────────────────────────────────
@@ -54,6 +90,8 @@ def render(template_name: str, **context) -> HTMLResponse:
 async def lifespan(app: FastAPI):
     await init_db()
     logger.info("WebAuditAgent ishga tushdi ✓")
+    # Eski _active_scans yozuvlarini tozalash uchun background task
+    asyncio.create_task(_cleanup_active_scans())
     yield
     logger.info("WebAuditAgent to'xtatildi")
 
@@ -67,8 +105,30 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
-# Faol scan progresslari
+# Faol scan progresslari: {session_id: {"message": ..., "percent": ..., "status": ..., "ts": ...}}
 _active_scans: dict = {}
+
+# _active_scans'da yozuv qancha vaqt saqlanadi (soniyada)
+_SCAN_CACHE_TTL = 300  # 5 daqiqa
+
+
+async def _cleanup_active_scans():
+    """Har 60 soniyada eski scan yozuvlarini tozalaydi (Memory Leak oldini olish)."""
+    while True:
+        try:
+            await asyncio.sleep(60)
+            now = time.time()
+            expired = [
+                sid for sid, data in _active_scans.items()
+                if data.get("status") in ("completed", "failed")
+                and (now - data.get("ts", now)) > _SCAN_CACHE_TTL
+            ]
+            for sid in expired:
+                _active_scans.pop(sid, None)
+            if expired:
+                logger.info(f"_active_scans: {len(expired)} ta eski yozuv tozalandi")
+        except Exception as e:
+            logger.error(f"Cleanup xato: {e}")
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -76,7 +136,11 @@ _active_scans: dict = {}
 # ──────────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, db: AsyncSession = Depends(get_db)):
+async def index(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
     result = await db.execute(
         select(ScanSession).order_by(desc(ScanSession.created_at)).limit(10)
     )
@@ -98,6 +162,7 @@ async def start_scan(
     scan_depth: str = Form(default="standard"),
     user_consent: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
+    user: str = Depends(verify_credentials),
 ):
     if not user_consent:
         raise HTTPException(status_code=400, detail="Ruxsatnomani tasdiqlang.")
@@ -124,10 +189,23 @@ async def start_scan(
     await db.commit()
     await db.refresh(session)
 
-    asyncio.create_task(
+    # Exception handling: done callback bilan xatolar logga yoziladi
+    task = asyncio.create_task(
         _run_scan_background(session.id, target_url, scan_depth)
     )
+    task.add_done_callback(_on_scan_task_done)
+
     return RedirectResponse(f"/scan/{session.id}", status_code=303)
+
+
+def _on_scan_task_done(task: asyncio.Task):
+    """Background scan task tugaganda xatolarni logga yozadi."""
+    if task.cancelled():
+        logger.warning("Scan task bekor qilindi")
+        return
+    exc = task.exception()
+    if exc:
+        logger.error(f"Background scan task xato bilan tugadi: {exc}", exc_info=exc)
 
 
 @app.get("/scan/{session_id}", response_class=HTMLResponse)
@@ -135,6 +213,7 @@ async def scan_status(
     request: Request,
     session_id: int,
     db: AsyncSession = Depends(get_db),
+    user: str = Depends(verify_credentials),
 ):
     session = await db.get(ScanSession, session_id)
     if not session:
@@ -162,7 +241,10 @@ async def scan_status(
 
 
 @app.get("/scan/{session_id}/progress")
-async def scan_progress(session_id: int):
+async def scan_progress(
+    session_id: int,
+    user: str = Depends(verify_credentials),
+):
     async def event_gen() -> AsyncGenerator[str, None]:
         while True:
             data = _active_scans.get(session_id, {
@@ -181,7 +263,11 @@ async def scan_progress(session_id: int):
 
 
 @app.get("/sessions", response_class=HTMLResponse)
-async def sessions_list(request: Request, db: AsyncSession = Depends(get_db)):
+async def sessions_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
     result = await db.execute(
         select(ScanSession).order_by(desc(ScanSession.created_at)).limit(50)
     )
@@ -190,7 +276,11 @@ async def sessions_list(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/session/{session_id}/findings")
-async def api_findings(session_id: int, db: AsyncSession = Depends(get_db)):
+async def api_findings(
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: str = Depends(verify_credentials),
+):
     result = await db.execute(
         select(Finding).where(Finding.session_id == session_id)
     )
@@ -203,12 +293,12 @@ async def api_findings(session_id: int, db: AsyncSession = Depends(get_db)):
 
 async def _run_scan_background(session_id: int, target_url: str, scan_depth: str):
     _active_scans[session_id] = {
-        "message": "Boshlanyapti...", "percent": 0, "status": "running"
+        "message": "Boshlanyapti...", "percent": 0, "status": "running", "ts": time.time()
     }
 
     async def progress(msg: str, pct: int):
         _active_scans[session_id] = {
-            "message": msg, "percent": pct, "status": "running"
+            "message": msg, "percent": pct, "status": "running", "ts": time.time()
         }
 
     try:
@@ -221,10 +311,12 @@ async def _run_scan_background(session_id: int, target_url: str, scan_depth: str
                 progress_callback=progress,
             )
         _active_scans[session_id] = {
-            "message": "✅ Scan yakunlandi!", "percent": 100, "status": "completed"
+            "message": "✅ Scan yakunlandi!", "percent": 100,
+            "status": "completed", "ts": time.time()
         }
     except Exception as e:
         logger.error(f"Scan xato: {e}", exc_info=True)
         _active_scans[session_id] = {
-            "message": f"❌ Xato: {str(e)[:100]}", "percent": 0, "status": "failed"
+            "message": f"❌ Xato: {str(e)[:100]}", "percent": 0,
+            "status": "failed", "ts": time.time()
         }

@@ -7,112 +7,16 @@ import asyncio
 import logging
 import time
 from typing import List, Dict, Callable, Optional
-from urllib.parse import urlparse
 
 from agent.modules.base_scanner import ScanTarget, RawFinding
 from agent.modules.analysis.cvss_scorer import CvssScorer, Verifier
 from agent.utils.scope_enforcer import ScopeEnforcer
 from agent.utils.audit_logger import AuditLogger
 
-from agent.modules.scanners.http_headers import (
-    CspHeaderScanner, HstsHeaderScanner, XFrameHeaderScanner,
-    XContentTypeHeaderScanner, ReferrerPolicyHeaderScanner,
-    PermissionsPolicyHeaderScanner, ServerHeaderScanner, XPoweredByScanner
-)
-from agent.modules.scanners.xss_scanner import XssScanner
-from agent.modules.scanners.sqli_scanner import SqliErrorScanner, SqliBooleanScanner
-from agent.modules.scanners.csrf_checker import CsrfFormScanner, CookieSecurityScanner
-from agent.modules.scanners.cors_scanner import CorsScanner
-from agent.modules.scanners.info_disclosure import (
-    EnvFileScanner, GitRepoScanner, BackupFileScanner,
-    PhpInfoScanner, PhpMyAdminScanner, SwaggerApiScanner, SpringBootActuatorScanner
-)
-from agent.modules.scanners.port_scan import NmapScanner
-from agent.modules.scanners.ssl_tls import SslCertificateScanner, SslProtocolScanner
-from agent.modules.recon.tech_fingerprint import (
-    TechFingerprintScanner, RobotsScanner, SitemapScanner,
-    DnsSpfScanner, DnsDmarcScanner, DnsMxScanner, DnsZoneTransferScanner
-)
+# Markazlashtirilgan scanner registry — DRY (orchestrator.py bilan mos)
+from agent.scanner_registry import SCANNERS_BY_DEPTH
 
 logger = logging.getLogger(__name__)
-
-SCANNERS_BY_DEPTH = {
-    "quick": [
-        CspHeaderScanner,
-        HstsHeaderScanner,
-        XFrameHeaderScanner,
-        XContentTypeHeaderScanner,
-        EnvFileScanner,
-        GitRepoScanner,
-        SslCertificateScanner,
-    ],
-    "standard": [
-        TechFingerprintScanner,
-        RobotsScanner,
-        SitemapScanner,
-        DnsSpfScanner,
-        DnsDmarcScanner,
-        DnsMxScanner,
-        DnsZoneTransferScanner,
-        CspHeaderScanner,
-        HstsHeaderScanner,
-        XFrameHeaderScanner,
-        XContentTypeHeaderScanner,
-        ReferrerPolicyHeaderScanner,
-        PermissionsPolicyHeaderScanner,
-        ServerHeaderScanner,
-        XPoweredByScanner,
-        SslCertificateScanner,
-        SslProtocolScanner,
-        EnvFileScanner,
-        GitRepoScanner,
-        BackupFileScanner,
-        PhpInfoScanner,
-        PhpMyAdminScanner,
-        SwaggerApiScanner,
-        SpringBootActuatorScanner,
-        CorsScanner,
-        XssScanner,
-        SqliErrorScanner,
-        SqliBooleanScanner,
-        CsrfFormScanner,
-        CookieSecurityScanner,
-        NmapScanner,
-    ],
-    "deep": [
-        TechFingerprintScanner,
-        RobotsScanner,
-        SitemapScanner,
-        DnsSpfScanner,
-        DnsDmarcScanner,
-        DnsMxScanner,
-        DnsZoneTransferScanner,
-        CspHeaderScanner,
-        HstsHeaderScanner,
-        XFrameHeaderScanner,
-        XContentTypeHeaderScanner,
-        ReferrerPolicyHeaderScanner,
-        PermissionsPolicyHeaderScanner,
-        ServerHeaderScanner,
-        XPoweredByScanner,
-        SslCertificateScanner,
-        SslProtocolScanner,
-        EnvFileScanner,
-        GitRepoScanner,
-        BackupFileScanner,
-        PhpInfoScanner,
-        PhpMyAdminScanner,
-        SwaggerApiScanner,
-        SpringBootActuatorScanner,
-        CorsScanner,
-        XssScanner,
-        SqliErrorScanner,
-        SqliBooleanScanner,
-        CsrfFormScanner,
-        CookieSecurityScanner,
-        NmapScanner,
-    ],
-}
 
 
 async def run_scan_cli(

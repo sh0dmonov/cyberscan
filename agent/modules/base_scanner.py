@@ -112,29 +112,37 @@ class BaseScanner(ABC):
         self,
         method: str,
         url: str,
+        retries: int = 1,
         **kwargs
     ) -> Optional[httpx.Response]:
         """
         Xavfsiz HTTP so'rov yuboruvchi helper.
-        Rate limiting (asyncio.Semaphore) va xatolarni avtomatik boshqaradi.
+        Rate limiting (asyncio.Semaphore), qayta urinish (retries) va xatolarni avtomatik boshqaradi.
         """
         await asyncio.sleep(settings.request_delay)
         client = await self._get_client()
 
-        # Haqiqiy parallel so'rovlar cheklovi
-        async with _REQUEST_SEMAPHORE:
-            try:
-                response = await client.request(method, url, **kwargs)
-                return response
-            except httpx.TimeoutException:
-                self.logger.warning(f"Timeout: {url}")
-                return None
-            except httpx.ConnectError:
-                self.logger.warning(f"Connection error: {url}")
-                return None
-            except Exception as e:
-                self.logger.error(f"Request error {url}: {e}")
-                return None
+        for attempt in range(retries + 1):
+            async with _REQUEST_SEMAPHORE:
+                try:
+                    response = await client.request(method, url, **kwargs)
+                    return response
+                except httpx.TimeoutException:
+                    if attempt < retries:
+                        await asyncio.sleep(0.5)
+                        continue
+                    self.logger.debug(f"Timeout: {url}")
+                    return None
+                except httpx.ConnectError:
+                    if attempt < retries:
+                        await asyncio.sleep(0.5)
+                        continue
+                    self.logger.debug(f"Connection error: {url}")
+                    return None
+                except Exception as e:
+                    self.logger.error(f"Request error {url}: {e}")
+                    return None
+        return None
 
     async def get(self, url: str, **kwargs) -> Optional[httpx.Response]:
         return await self._request("GET", url, **kwargs)

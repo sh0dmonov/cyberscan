@@ -60,9 +60,9 @@ class NmapScanner(BaseScanner):
 
         # Scan chuqurligiga qarab Nmap argumentlarini belgilash
         depth_args = {
-            "quick":    ["-T4", "--top-ports", "100", "-sV", "--version-intensity", "2"],
-            "standard": ["-T4", "--top-ports", "1000", "-sV", "--version-intensity", "5"],
-            "deep":     ["-T3", "-p-", "-sV", "--version-intensity", "7", "-sC"],
+            "quick":    ["-Pn", "-T4", "--top-ports", "100",  "-sV", "--version-intensity", "2"],
+            "standard": ["-Pn", "-T4", "--top-ports", "1000", "-sV", "--version-intensity", "5"],
+            "deep":     ["-Pn", "-T3", "-p-",          "-sV", "--version-intensity", "7", "-sC"],
         }
         nmap_args = depth_args.get(target.depth, depth_args["standard"])
 
@@ -83,7 +83,9 @@ class NmapScanner(BaseScanner):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+            # timeout: quick=5min, standard=10min, deep=30min
+            scan_timeout = {"quick": 300, "standard": 600, "deep": 1800}.get(target.depth, 600)
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=scan_timeout)
 
             if proc.returncode != 0:
                 logger.error(f"Nmap xato: {stderr.decode()[:500]}")
